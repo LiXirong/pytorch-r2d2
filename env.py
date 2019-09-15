@@ -1,14 +1,14 @@
 from skimage.color import rgb2gray
 from skimage.transform import resize
+import cv2
 import numpy as np
 import gym
 
 from collections import deque
 
 
-def preprocess(frame):#, last_frame):
-    #frame = np.maximum(frame, last_frame)
-    frame = np.uint8(resize(rgb2gray(frame), (84,84)) * 255)
+def preprocess(frame):
+    frame = np.uint8(cv2.resize(cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY), (84,84)))
     frame = np.reshape(frame, (1, 84,84))
     return frame
 

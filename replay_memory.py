@@ -109,17 +109,23 @@ class ReplayMemory:
         while True:
             if os.path.isfile(path) and os.path.getsize(path) > 0:
                 if lock.acquire(blocking=False):
-                    memory = torch.load(path, map_location=lambda storage, loc: strage)
-                    self.extend(memory)
-                    self.fit()
-                    torch.save(self.memory, path)
+                    try:
+                        memory = torch.load(path, map_location=lambda storage, loc: strage)
+                        self.extend(memory)
+                        self.fit()
+                        torch.save(self.memory, path)
+                    except:
+                        os.remove(path)
                     lock.release()
                     gc.collect()
                     return
             else:
                 if lock.acquire(blocking=False):
-                    self.fit()
-                    torch.save(self.memory, path)
+                    try:
+                        self.fit()
+                        torch.save(self.memory, path)
+                    except:
+                        os.remove(path)
                     lock.release()
                     gc.collect()
                     return
@@ -133,8 +139,11 @@ class ReplayMemory:
         while True:
             if os.path.isfile(path) and os.path.getsize(path) > 0:
                 if lock.acquire(blocking=False):
-                    memory = torch.load(path, map_location=lambda storage, loc: strage)
-                    self.extend(memory)
+                    try:
+                        memory = torch.load(path, map_location=lambda storage, loc: strage)
+                        self.extend(memory)
+                    except:
+                        pass
                     os.remove(path)
                     lock.release()
                     gc.collect()

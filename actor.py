@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 
+from time import time
 import os
 
 from model import QNet
@@ -43,7 +44,7 @@ class Actor:
         self.eta = 0.9
         self.sequence_length = self.burn_in_length + self.learning_length
         self.stack_count = self.n_stacks // self.action_repeat
-        self.memory_save_interval = 1
+        self.memory_save_interval = 5
         self.n_steps_memory = NStepMemory(self.bootstrap_steps, self.gamma)
         self.replay_memory = ReplayMemory(self.memory_size, self.batch_size, self.bootstrap_steps)
 
@@ -61,6 +62,7 @@ class Actor:
         self.n_steps = 0
         self.memory_count = 0
         self.state = self.env.reset()
+        self.start = time()
     
     def run(self):
         while True:
