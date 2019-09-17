@@ -51,8 +51,8 @@ class Actor:
         # net
         self.shared_dict = shared_dict
         self.net_load_interval = 5
-        self.net = QNet(self.net_path).to(self.device)
-        self.target_net = QNet(self.target_net_path).to(self.device)
+        self.net = QNet(self.net_path, self.device).to(self.device)
+        self.target_net = QNet(self.target_net_path, self.device).to(self.device)
         self.target_net.load_state_dict(self.net.state_dict())
 
         # env
@@ -62,7 +62,6 @@ class Actor:
         self.n_steps = 0
         self.memory_count = 0
         self.state = self.env.reset()
-        self.start = time()
     
     def run(self):
         while True:
@@ -106,7 +105,11 @@ class Actor:
         if self.n_episodes % 1 == 0:
             print('episodes:', self.n_episodes, 'actor_id:', self.actor_id, 'return:', self.episode_reward)
 
+        self.net.reset()
+        self.target_net.reset()
         self.calc_priority()
+        self.net.reset()
+        self.target_net.reset()
         self.state = self.env.reset()
         self.episode_reward = 0
         self.n_episodes += 1
@@ -140,8 +143,12 @@ class Actor:
         batch, index = self.replay_memory.indexing_sample(start_index, last_index, self.device)
         batch_size = batch['state'].shape[0]
         priority = np.zeros(batch_size, dtype=np.float32)
+        hs = np.zeros((batch_size, 256), dtype=np.float32)
+        cs = np.zeros((batch_size, 256), dtype=np.float32)
+        target_hs = np.zeros((batch_size, 256), dtype=np.float32)
+        target_cs = np.zeros((batch_size, 256), dtype=np.float32)
 
-        mini_batch_size = 500
+        mini_batch_size = 200
         for start_index in range(0, batch_size, mini_batch_size):
             last_index = min(start_index + mini_batch_size, batch_size)
             mini_batch = dict()
@@ -154,20 +161,27 @@ class Actor:
 
             with torch.no_grad():
                 # q_value
-                q_value = self.net(
-                    mini_batch['state']).gather(1, mini_batch['action']).view(-1,1).cpu().numpy()
+                q_value, h, c = self.net(
+                    mini_batch['state'], True)
+                q_value = q_value.gather(1, mini_batch['action']).view(-1,1).cpu().numpy()
 
                 # taget_q_value
                 next_action = torch.argmax(self.net(
                     mini_batch['next_state']), 1).view(-1,1)
-                next_q_value = self.target_net(
-                    mini_batch['next_state']).gather(1, next_action).cpu().numpy()
+                next_q_value, target_h, target_c = self.target_net(
+                    mini_batch['next_state'], True)
+                next_q_value = next_q_value.gather(1, next_action).cpu().numpy()
             
             target_q_value = mini_batch['reward'] + (self.gamma**self.bootstrap_steps) * next_q_value * (1 - mini_batch['done'])
             delta = np.abs(q_value - target_q_value).reshape(-1) + self.priority_epsilon
             delta = delta ** self.alpha
             priority[start_index: last_index] = delta
+            hs[start_index: last_index] = h
+            cs[start_index: last_index] = c
+            target_hs[start_index: last_index] = target_h
+            target_cs[start_index: last_index] = target_c
         
+        self.replay_memory.set_hs_cs(index, hs, cs, target_hs, target_cs)
         self.replay_memory.update_priority(index, priority)
 
         seq_start_index = [i for i in range(start_index, last_index-self.sequence_length, self.overlap_length)]

@@ -46,9 +46,10 @@ class NStepMemory(dict):
 
 
 class ReplayMemory:
-    def __init__(self, memory_size=100000, batch_size=32, n_step=3, state_size=(84,84), action_repeat=4, n_stacks=4, alpha=0.4):
+    def __init__(self, memory_size=100000, batch_size=32, n_step=3, state_size=(84,84), cell_size=256, action_repeat=4, n_stacks=4, alpha=0.4):
         self.index = 0
         self.memory_size = memory_size
+        self.cell_size = cell_size
         self.batch_size = batch_size
         self.n_step = n_step
         self.state_size = (action_repeat,) + state_size
@@ -58,10 +59,14 @@ class ReplayMemory:
         self.beta = 0.4
         self.beta_step = 0.00025 / 4
         self.eta = 0.9
-        self.sequence_length = 20
+        self.burn_in_length = 10
+        self.learning_length = 10
+        self.sequence_length = self.burn_in_length + self.learning_length
 
         self.memory = dict()
         self.memory['state'] = np.zeros((self.memory_size, *self.state_size), dtype=np.uint8)
+        self.memory['hs_cs'] = np.zeros((self.memory_size, cell_size*2), dtype=np.float32)
+        self.memory['target_hs_cs'] = np.zeros((self.memory_size, cell_size*2), dtype=np.float32)
         self.memory['action'] = np.zeros((self.memory_size, 1), dtype=np.int8)
         self.memory['reward'] = np.zeros((self.memory_size, 1), dtype=np.float32)
         self.memory['done'] = np.zeros((self.memory_size, 1), dtype=np.float32)
@@ -77,7 +82,7 @@ class ReplayMemory:
     
     def add(self, state, action, reward, done, stack_count):
         index = self.index % self.memory_size
-        self.memory['state'][index] = state * 255   
+        self.memory['state'][index] = state * 255
         self.memory['action'][index] = action
         self.memory['reward'][index] = reward
         self.memory['done'][index] = 1 if done else 0
@@ -155,6 +160,12 @@ class ReplayMemory:
     def update_priority(self, index, priority):
         self.memory['priority'][index] = priority
     
+    def set_hs_cs(self, index, hs, cs, target_hs, target_cs):
+        self.memory['hs_cs'][index, :self.cell_size] = hs
+        self.memory['hs_cs'][index, self.cell_size:] = cs
+        self.memory['target_hs_cs'][index, :self.cell_size] = target_hs
+        self.memory['target_hs_cs'][index, self.cell_size:] = target_cs
+    
     def update_sequence_priority(self, index, update_pre_next_seq_priority=False):
         for idx in index:
             indices = np.arange(idx, idx+self.sequence_length) % self.memory_size
@@ -210,9 +221,19 @@ class ReplayMemory:
         batch = dict()
         batch['state'] = [np.stack([self.get_stacked_state(i%self.memory_size) for i in seq_index+s]) for s in range(self.sequence_length)]
         batch['next_state'] = [np.stack([self.get_stacked_state(i%self.memory_size) for i in next_seq_index+s]) for s in range(self.sequence_length)]
-        batch['action'] = [self.memory['action'][(seq_index+s)%self.memory_size] for s in range(self.sequence_length)]
-        batch['reward'] = [self.memory['reward'][(seq_index+s)%self.memory_size] for s in range(self.sequence_length)]
-        batch['done'] = [self.memory['done'][(seq_index+s)%self.memory_size] for s in range(self.sequence_length)]
+        batch['hs'] = self.memory['hs_cs'][seq_index, :self.cell_size]
+        batch['cs'] = self.memory['hs_cs'][seq_index, self.cell_size:]
+        batch['target_hs'] = self.memory['target_hs_cs'][next_seq_index, :self.cell_size]
+        batch['target_cs'] = self.memory['target_hs_cs'][next_seq_index, self.cell_size:]
+        batch['action'] = [self.memory['action'][(seq_index+self.burn_in_length+s)%self.memory_size] for s in range(self.learning_length)]
+        batch['reward'] = [self.memory['reward'][(seq_index+self.burn_in_length+s)%self.memory_size] for s in range(self.learning_length)]
+        batch['done'] = [self.memory['done'][(seq_index+self.burn_in_length+s)%self.memory_size] for s in range(self.learning_length)]
+        for key in batch.keys():
+            if key not in ['hs', 'cs', 'target_hs', 'target_cs']:
+                batch[key] = np.stack(batch[key])
+        index = np.stack([(seq_index+s)%self.memory_size for s in range(self.sequence_length)])
+
+
         for key in batch.keys():
             batch[key] = np.stack(batch[key])
         index = np.stack([(seq_index+s)%self.memory_size for s in range(self.sequence_length)])
@@ -231,8 +252,8 @@ class ReplayMemory:
         next_index = index + self.n_step
 
         batch = dict()
-        batch['state'] = np.stack([self.get_stacked_state(i) for i in index])
-        batch['next_state'] = np.stack([self.get_stacked_state(i%self.memory_size) for i in next_index])
+        batch['state'] = np.stack([[self.get_stacked_state(i)] for i in index])
+        batch['next_state'] = np.stack([[self.get_stacked_state(i%self.memory_size)] for i in next_index])
         batch['action'] = self.memory['action'][index]
         batch['reward'] = self.memory['reward'][index]
         batch['done'] = self.memory['done'][index]

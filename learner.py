@@ -36,6 +36,9 @@ class Learner:
             './', 'logs', 'model', 'target_net.pt')
         
         # memory
+        self.burn_in_length = 10
+        self.learning_length = 10
+        self.sequence_length = self.burn_in_length + self.learning_length
         self.memory_size = 500000
         self.batch_size = 8
         self.memory_load_interval = 20
@@ -62,16 +65,29 @@ class Learner:
     def train(self):
         batch, seq_index, index = self.replay_memory.sample(self.device)
 
+        self.net.set_state(batch['hs'], batch['cs'])
+        self.target_net.set_state(batch['target_hs'], batch['target_cs'])
+
+        ### burn-in step ###
+        state = batch['state'][:self.burn_in_length]
+        next_state = batch['next_state'][:self.burn_in_length]
+        with torch.no_grad():
+            _ = self.net(state)
+            _ = self.target_net(next_state)
+
+        ### learning step ###
+        state = batch['state'][self.burn_in_length:]
+        next_state = batch['next_state'][self.burn_in_length:]
+
         # q_value
-        q_value = self.net(batch['state'])
-        q_value = q_value.gather(1, batch['action'].view(-1,1))
+        q_value = self.net(state).gather(1, batch['action'].view(-1,1))
 
         # target q_value
         with torch.no_grad():
             next_action = torch.argmax(
-                self.net(batch["next_state"]), 1).view(-1, 1)
+                self.net(next_state), 1).view(-1, 1)
             next_q_value = self.target_net(
-                    batch["next_state"]).gather(1, next_action)
+                    next_state).gather(1, next_action)
             target_q_value = batch["reward"].view(-1,1) + (self.gamma**self.bootstrap_steps) * next_q_value * (1 - batch['done'].view(-1,1))
         
         # update
@@ -81,7 +97,7 @@ class Learner:
         self.optim.step()
 
         priority = (np.abs((q_value - target_q_value).detach().cpu().numpy()).reshape(-1) + self.priority_epsilon) ** self.alpha
-        self.replay_memory.update_priority(index.reshape(-1), priority)
+        self.replay_memory.update_priority(index[self.burn_in_length:].reshape(-1), priority)
         self.replay_memory.update_sequence_priority(seq_index, True)
 
     def interval(self):

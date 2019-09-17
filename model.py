@@ -14,6 +14,7 @@ class QNet(nn.Module):
         super(QNet, self).__init__()
         self.path = path
         self.device = device
+        self.hs, self.cs = None, None
 
         self.vis_layers = nn.Sequential(
             # (84, 84, *) -> (20, 20, 16)
@@ -23,29 +24,32 @@ class QNet(nn.Module):
             nn.Conv2d(32, 32, kernel_size=4, stride=2),
             nn.ReLU(True),
             # (9, 9, 32) -> (7, 7, 64)
-            nn.Conv2d(32, 64, kernel_size=3, stride=1),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1),
             nn.ReLU(True)
             #Flatten(),
         )
-
+        """
         self.l1 = nn.Sequential(
-            nn.Linear(7 * 7 * 64, 512),
+            nn.Linear(7 * 7 * 64, 256),
             nn.ReLU(True)
         )
+        """
+
+        self.lstm = nn.LSTMCell(7*7*32, 256)
 
         self.val = nn.Sequential(
-            nn.Linear(512, 256),
+            nn.Linear(256, 256),
             nn.ReLU(True),
             nn.Linear(256, 1)
         )
 
         self.adv = nn.Sequential(
-            nn.Linear(512, 256),
+            nn.Linear(256, 256),
             nn.ReLU(True),
             nn.Linear(256, 6)
         )
 
-    def forward(self, state):
+    def forward(self, state, return_hs_cs=False):
         if len(state.size()) == 5:
             seq_size, batch_size, _, _, _ = state.size()
         else:
@@ -53,36 +57,38 @@ class QNet(nn.Module):
             batch_size, c, h, w = state.size()
         state = state.view(-1, 4, 84, 84)
 
-        h = self.vis_layers(state).view(-1, 7*7*64)
-        h = self.l1(h)
+        hs = self.vis_layers(state).view(seq_size, batch_size, 7*7*32)
 
-        val = self.val(h)
-        adv = self.adv(h)
+        if self.hs is None:
+            self.hs = torch.zeros(batch_size, 256).to(self.device)
+            self.cs = torch.zeros(batch_size, 256).to(self.device)
+        #h = self.l1(h)
+
+        hs_seq = []
+        cs_seq = []
+        for h in hs:
+            self.hs, self.cs = self.lstm(h, (self.hs, self.cs))
+            hs_seq.append(self.hs)
+            cs_seq.append(self.cs)
+        hs = torch.cat(hs_seq, dim=0)
+        cs = torch.cat(cs_seq, dim=0)
+
+        val = self.val(hs)
+        adv = self.adv(hs)
         q_val = val + adv - adv.mean(1, keepdim=True)
         if seq_size > 1:
             q_val = q_val.view(-1, 6)
 
-        return q_val
+        if return_hs_cs:
+            return q_val, hs.detach().cpu().numpy(), cs.detach().cpu().numpy()
+        else:
+            return q_val
     
-    def save(self):
-        lock = fasteners.ReaderWriterLock()
-        while True:
-            try:
-                with lock.write_lock():
-                    torch.save(deepcopy(self).cpu().state_dict(), self.path)
-                    sleep(0.1)
-                return
-            except:
-                sleep(np.random.random()+1)
+    def reset(self):
+        self.hs, self.cs = None, None
     
-    def load(self):
-        lock = fasteners.ReaderWriterLock()
-        while True:
-            try:
-                with lock.read_lock():
-                    state_dict = torch.load(self.path)
-                self.load_state_dict(state_dict)
-                return
-            except:
-                sleep(np.random.random()+1)
+    def set_state(self, hs, cs):
+        self.hs, self.cs = hs, cs
     
+    def get_state(self):
+        return self.hs.detach().cpu().numpy(), self.cs.detach().cpu().numpy()
