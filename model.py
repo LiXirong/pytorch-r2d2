@@ -26,14 +26,8 @@ class QNet(nn.Module):
             # (9, 9, 32) -> (7, 7, 64)
             nn.Conv2d(32, 32, kernel_size=3, stride=1),
             nn.ReLU(True)
-            #Flatten(),
         )
-        """
-        self.l1 = nn.Sequential(
-            nn.Linear(7 * 7 * 64, 256),
-            nn.ReLU(True)
-        )
-        """
+
 
         self.lstm = nn.LSTMCell(7*7*32, 256)
 
@@ -62,7 +56,6 @@ class QNet(nn.Module):
         if self.hs is None:
             self.hs = torch.zeros(batch_size, 256).to(self.device)
             self.cs = torch.zeros(batch_size, 256).to(self.device)
-        #h = self.l1(h)
 
         hs_seq = []
         cs_seq = []
@@ -70,17 +63,21 @@ class QNet(nn.Module):
             self.hs, self.cs = self.lstm(h, (self.hs, self.cs))
             hs_seq.append(self.hs)
             cs_seq.append(self.cs)
-        hs = torch.cat(hs_seq, dim=0)
-        cs = torch.cat(cs_seq, dim=0)
 
-        val = self.val(hs)
-        adv = self.adv(hs)
+        hs_seq = torch.cat(hs_seq, dim=0)
+        cs_seq = torch.cat(cs_seq, dim=0)
+
+        val = self.val(hs_seq)
+        adv = self.adv(hs_seq)
         q_val = val + adv - adv.mean(1, keepdim=True)
         if seq_size > 1:
             q_val = q_val.view(-1, 6)
+        
+        hs_seq = hs_seq.detach().cpu().numpy()
+        cs_seq = cs_seq.detach().cpu().numpy()
 
         if return_hs_cs:
-            return q_val, hs.detach().cpu().numpy(), cs.detach().cpu().numpy()
+            return q_val, hs_seq, cs_seq
         else:
             return q_val
     

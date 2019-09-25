@@ -14,7 +14,12 @@ class NStepMemory(dict):
         self.memory_size = memory_size
         self.gamma = gamma
 
+        self.q_value = deque(maxlen=memory_size)
         self.state = deque(maxlen=memory_size)
+        self.h = deque(maxlen=memory_size)
+        self.c = deque(maxlen=memory_size)
+        self.target_h = deque(maxlen=memory_size)
+        self.target_c = deque(maxlen=memory_size)
         self.action = deque(maxlen=memory_size)
         self.reward = deque(maxlen=memory_size)
         self.stack_count = deque(maxlen=memory_size)
@@ -23,18 +28,28 @@ class NStepMemory(dict):
     def size(self):
         return len(self.state)
 
-    def add(self, state, action, reward, stack_count):
+    def add(self, q_value, state, h, c, target_h, target_c, action, reward, stack_count):
+        self.q_value.append(q_value)
         self.state.append(state)
+        self.h.append(h)
+        self.c.append(c)
+        self.target_h.append(target_h)
+        self.target_c.append(target_c)
         self.action.append(action)
         self.reward.append(reward)
         self.stack_count.append(stack_count)
 
     def get(self):
+        q_value = self.q_value.popleft()
         state = self.state.popleft()
+        h = self.h.popleft()
+        c = self.c.popleft()
+        target_h = self.target_h.popleft()
+        target_c = self.target_c.popleft()
         action = self.action.popleft()
         stack_count = self.stack_count.popleft()
         reward = sum([self.gamma ** i * r for i,r in enumerate(self.reward)])
-        return state, action, reward, stack_count
+        return q_value, state, h, c, target_h, target_c, action, reward, stack_count
     
     def clear(self):
         self.state.clear()
@@ -80,13 +95,18 @@ class ReplayMemory:
     def size(self):
         return min(self.index, self.memory_size)
     
-    def add(self, state, action, reward, done, stack_count):
+    def add(self, state, hs, cs, target_hs, target_cs, action, reward, done, stack_count, priority):
         index = self.index % self.memory_size
         self.memory['state'][index] = state * 255
+        self.memory['hs_cs'][index, :self.cell_size] = hs
+        self.memory['hs_cs'][index, self.cell_size:] = cs
+        self.memory['target_hs_cs'][index, :self.cell_size] = target_hs
+        self.memory['target_hs_cs'][index, self.cell_size:] = target_cs
         self.memory['action'][index] = action
         self.memory['reward'][index] = reward
         self.memory['done'][index] = 1 if done else 0
         self.memory['stack_count'][index] = stack_count
+        self.memory['priority'][index] = priority
         self.index += 1
     
     def extend(self, memory):
@@ -248,8 +268,8 @@ class ReplayMemory:
         return batch, seq_index, index
     
     def indexing_sample(self, start_index, last_index, device='cpu'):
-        index = np.array([i for i in range(start_index, last_index)])
-        next_index = index + self.n_step
+        index = np.arange(start_index, last_index) % self.memory_size
+        next_index = (index + self.n_step) % self.memory_size
 
         batch = dict()
         batch['state'] = np.stack([[self.get_stacked_state(i)] for i in index])
