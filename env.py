@@ -1,5 +1,3 @@
-from skimage.color import rgb2gray
-from skimage.transform import resize
 import cv2
 import numpy as np
 import gym

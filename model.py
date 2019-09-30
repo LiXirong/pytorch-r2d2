@@ -1,18 +1,11 @@
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
 import numpy as np
-
-import fasteners
-import os
-from time import sleep
-from copy import deepcopy
 
 
 class QNet(nn.Module):
-    def __init__(self, path, device='cpu'):
+    def __init__(self, device='cpu'):
         super(QNet, self).__init__()
-        self.path = path
         self.device = device
         self.hs, self.cs = None, None
 
@@ -27,7 +20,6 @@ class QNet(nn.Module):
             nn.Conv2d(32, 32, kernel_size=3, stride=1),
             nn.ReLU(True)
         )
-
 
         self.lstm = nn.LSTMCell(7*7*32, 256)
 

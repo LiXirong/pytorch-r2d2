@@ -30,10 +30,6 @@ class Learner:
         # path
         self.memory_path = os.path.join(
             './', 'logs', 'memory')
-        self.net_path = os.path.join(
-            './', 'logs', 'model', 'net.pt')
-        self.target_net_path = os.path.join(
-            './', 'logs', 'model', 'target_net.pt')
         
         # memory
         self.burn_in_length = 10
@@ -48,8 +44,8 @@ class Learner:
         self.shared_dict = shared_dict
         self.net_save_interval = 100
         self.target_update_interval = 1000
-        self.net = QNet(self.net_path, self.device).to(self.device)
-        self.target_net = QNet(self.target_net_path, self.device).to(self.device)
+        self.net = QNet(self.device).to(self.device)
+        self.target_net = QNet(self.device).to(self.device)
         self.target_net.load_state_dict(self.net.state_dict())
         self.save_model()
         self.optim = optim.RMSprop(self.net.parameters(), lr=0.00025/4.0, alpha=0.95, eps=1.5e-7, centered=True)

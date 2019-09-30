@@ -16,10 +16,10 @@ class NStepMemory(dict):
 
         self.q_value = deque(maxlen=memory_size)
         self.state = deque(maxlen=memory_size)
-        self.h = deque(maxlen=memory_size)
-        self.c = deque(maxlen=memory_size)
-        self.target_h = deque(maxlen=memory_size)
-        self.target_c = deque(maxlen=memory_size)
+        self.hs = deque(maxlen=memory_size)
+        self.cs = deque(maxlen=memory_size)
+        self.target_hs = deque(maxlen=memory_size)
+        self.target_cs = deque(maxlen=memory_size)
         self.action = deque(maxlen=memory_size)
         self.reward = deque(maxlen=memory_size)
         self.stack_count = deque(maxlen=memory_size)
@@ -28,13 +28,13 @@ class NStepMemory(dict):
     def size(self):
         return len(self.state)
 
-    def add(self, q_value, state, h, c, target_h, target_c, action, reward, stack_count):
+    def add(self, q_value, state, hs, cs, target_hs, target_cs, action, reward, stack_count):
         self.q_value.append(q_value)
         self.state.append(state)
-        self.h.append(h)
-        self.c.append(c)
-        self.target_h.append(target_h)
-        self.target_c.append(target_c)
+        self.hs.append(hs)
+        self.cs.append(cs)
+        self.target_hs.append(target_hs)
+        self.target_cs.append(target_cs)
         self.action.append(action)
         self.reward.append(reward)
         self.stack_count.append(stack_count)
@@ -42,19 +42,14 @@ class NStepMemory(dict):
     def get(self):
         q_value = self.q_value.popleft()
         state = self.state.popleft()
-        h = self.h.popleft()
-        c = self.c.popleft()
-        target_h = self.target_h.popleft()
-        target_c = self.target_c.popleft()
+        hs = self.hs.popleft()
+        cs = self.cs.popleft()
+        target_hs = self.target_hs.popleft()
+        target_cs = self.target_cs.popleft()
         action = self.action.popleft()
         stack_count = self.stack_count.popleft()
         reward = sum([self.gamma ** i * r for i,r in enumerate(self.reward)])
-        return q_value, state, h, c, target_h, target_c, action, reward, stack_count
-    
-    def clear(self):
-        self.state.clear()
-        self.action.clear()
-        self.reward.clear()
+        return q_value, state, hs, cs, target_hs, target_cs, action, reward, stack_count
     
     def is_full(self):
         return len(self.state) == self.memory_size
@@ -235,7 +230,6 @@ class ReplayMemory:
             replacement=True)
         seq_index = np.array(list(seq_index))
         seq_index = seq_start_index[seq_index]
-        #index = np.random.randint(0, self.size, self.batch_size)
         next_seq_index = (seq_index + self.n_step) % self.memory_size
 
         batch = dict()

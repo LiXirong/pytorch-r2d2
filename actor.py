@@ -29,10 +29,6 @@ class Actor:
         # path
         self.memory_path = os.path.join(
             './', 'logs', 'memory')
-        self.net_path = os.path.join(
-            './', 'logs', 'model', 'net.pt')
-        self.target_net_path = os.path.join(
-            './', 'logs', 'model', 'target_net.pt')
 
         # memory
         self.memory_size = 50000
@@ -53,8 +49,8 @@ class Actor:
         # net
         self.shared_dict = shared_dict
         self.net_load_interval = 5
-        self.net = QNet(self.net_path, self.device).to(self.device)
-        self.target_net = QNet(self.target_net_path, self.device).to(self.device)
+        self.net = QNet(self.device).to(self.device)
+        self.target_net = QNet(self.device).to(self.device)
         self.target_net.load_state_dict(self.net.state_dict())
 
         # env
