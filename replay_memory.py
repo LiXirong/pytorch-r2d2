@@ -130,7 +130,7 @@ class ReplayMemory:
             if os.path.isfile(path) and os.path.getsize(path) > 0:
                 if lock.acquire(blocking=False):
                     try:
-                        memory = torch.load(path, map_location=lambda storage, loc: strage)
+                        memory = torch.load(path, map_location=lambda storage, loc: storage)
                         self.extend(memory)
                         self.fit()
                         torch.save(self.memory, path)
@@ -160,7 +160,7 @@ class ReplayMemory:
             if os.path.isfile(path) and os.path.getsize(path) > 0:
                 if lock.acquire(blocking=False):
                     try:
-                        memory = torch.load(path, map_location=lambda storage, loc: strage)
+                        memory = torch.load(path, map_location=lambda storage, loc: storage)
                         self.extend(memory)
                     except:
                         pass
