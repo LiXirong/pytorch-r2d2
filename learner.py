@@ -54,9 +54,16 @@ class Learner:
         while True:
             if self.replay_memory.size > self.initial_exploration:
                 self.train()
+                self.n_epochs += 1
                 if self.n_epochs % 100 == 0:
                     print('trained', self.n_epochs, 'epochs')
-            self.interval()
+                self.interval()
+            else:
+                for i in range(self.n_actors):
+                    try:
+                        self.replay_memory.load(self.memory_path, i)
+                    except:
+                        pass
     
     def train(self):
         batch, seq_index, index = self.replay_memory.sample(self.device)
@@ -97,14 +104,20 @@ class Learner:
         self.replay_memory.update_sequence_priority(seq_index, True)
 
     def interval(self):
-        self.n_epochs += 1
         if self.n_epochs % self.target_update_interval == 0:
             self.target_net.load_state_dict(self.net.state_dict())
         if self.n_epochs % self.net_save_interval == 0:
             self.save_model()
         if self.n_epochs % self.memory_load_interval == 0:
             for i in range(self.n_actors):
-                self.replay_memory.load(self.memory_path, i)
+                try:
+                    self.replay_memory.load(self.memory_path, i)
+                except:
+                    pass
+        if self.n_epochs%10000 == 0:  # save model
+            save_path = 'save/'+str(self.n_epochs)+'_save.pt'
+            save_model = deepcopy(self.net).cpu().state_dict()
+            torch.save(save_model, save_path)
     
     def save_model(self):
         self.shared_dict['net_state'] = deepcopy(self.net).cpu().state_dict()
